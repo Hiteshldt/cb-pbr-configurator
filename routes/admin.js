@@ -132,7 +132,13 @@ router.patch('/quotes/:id/status', requireAdmin, async (req, res) => {
     await run('UPDATE quotes SET status=?, updated_at=? WHERE id=?', [status, now, row.id]);
 
     const history = { status, note, eta_date };
-    sendStatusUpdateEmail(row, history).catch(e => console.error('Status email error:', e.message));
+    // Await so the email actually completes before the serverless function is
+    // frozen after res.json(); own try/catch so an email failure isn't a 500.
+    try {
+      await sendStatusUpdateEmail(row, history);
+    } catch (e) {
+      console.error('Status email error:', e.message);
+    }
 
     res.json({ status: 'ok', history_id: info.lastInsertRowid });
   } catch (e) {

@@ -49,15 +49,27 @@ router.post('/submit', async (req, res) => {
     if (!data.client) data.client = {};
     data.client.reference = reference;
 
+    // NOTE: on Vercel serverless the function is frozen/killed the instant the
+    // response is sent, so any not-yet-finished async work (email, webhook) is
+    // dropped. We therefore AWAIT these before responding. Each is wrapped in its
+    // own try/catch so a delivery failure never turns a saved quote into a 500.
     if (WEBHOOK_URL) {
-      fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      }).catch(e => console.error('Sheets webhook error:', e.message));
+      try {
+        await fetch(WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        console.error('Sheets webhook error:', e.message);
+      }
     }
 
-    sendSubmissionEmails(data, portalUrl).catch(e => console.error('Email error:', e.message));
+    try {
+      await sendSubmissionEmails(data, portalUrl);
+    } catch (e) {
+      console.error('Email error:', e.message);
+    }
 
     res.json({ status: 'ok', reference, portal_url: portalUrl });
   } catch (err) {
